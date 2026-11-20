@@ -14,6 +14,13 @@ It fetches `origin/main` of the AutoScout checkout at `../auto-scout`, rebuilds 
 Pass another checkout path as the first argument.
 The build reads the Git ref, never the working tree, so local edits in the checkout do not reach the page.
 
+## Where it runs
+
+The run server (`ssh lenovo`) rebuilds the page every day at 04:00 UTC with a systemd user timer, `autoscout-structure.timer`.
+It uses its own clone of AutoScout at `/mnt/data/workspace/autoscout-structure-source`, apart from the checkout the nightly run uses.
+No model is involved.
+When the build fails, the page stays at its last good version; see the reason with `journalctl --user -u autoscout-structure.service`.
+
 ## What comes from where
 
 | File | Holds |

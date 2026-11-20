@@ -203,7 +203,7 @@ const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString("en-US");
 
 const m = DATA.meta, st = m.stats;
-$("stamp").textContent = "Built from the code as of " + m.commit_date + " (commit " + m.commit + "). Page generated " + m.generated + ".";
+$("stamp").textContent = "Built from the code as of " + m.commit_date + " (commit " + m.commit + ").";
 $("tiles").innerHTML = [
   [st.stages, "stages in a run"], [st.model_stages, "stages that call a model"], [fmt(st.modules), "Python modules"],
   [fmt(st.lines), "lines of Python"], [fmt(st.test_files), "test files"]

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import ast
-import datetime
 import glob
 import json
 import re
@@ -178,7 +177,6 @@ def main() -> int:
             "meta": {
                 "commit": git(args.repo, "rev-parse", "--short", args.ref),
                 "commit_date": git(args.repo, "log", "-1", "--format=%cs", args.ref),
-                "generated": datetime.date.today().isoformat(),
                 "stats": stats,
             },
             "facts": facts,
