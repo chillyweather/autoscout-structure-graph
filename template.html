@@ -82,7 +82,27 @@
   .blocks i { width: 14px; height: 22px; border-radius: 3px; background: var(--code); }
   .blocks i.k-model { background: var(--model); }
   .blocks i.on { outline: 2px solid var(--text); outline-offset: 1px; }
-  .readout { min-height: 22px; font-size: 13.5px; color: var(--text-2); margin: 10px 0 8px; }
+  .readout { min-height: 22px; font-size: 13.5px; color: var(--text-2); }
+  .viewbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 16px 0 8px; }
+  .views { display: inline-flex; padding: 3px; background: var(--panel); border-radius: 9px; }
+  .views button { font: inherit; font-size: 13.5px; padding: 5px 14px; border: 0; border-radius: 7px; background: none; color: var(--text-2); cursor: pointer; }
+  .views button[aria-selected="true"] { background: var(--bg); color: var(--text); font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+  .trackwrap { display: grid; grid-template-columns: minmax(0, 560px) 1fr; gap: 28px; align-items: start; }
+  .trackscroll { overflow-x: auto; }
+  #track svg { display: block; width: 560px; height: auto; }
+  #track text { font-family: var(--sans); fill: var(--text); }
+  #track .muted { fill: var(--text-3); }
+  #track .lane { stroke: var(--border); stroke-dasharray: 2 4; }
+  #track .bracket { stroke: var(--border); stroke-width: 2; stroke-linecap: round; }
+  #track .line { fill: none; stroke: var(--text-3); stroke-width: 2; stroke-linejoin: round; opacity: .6; }
+  #track .node { stroke: var(--bg); stroke-width: 2; pointer-events: none; }
+  #track .hit { fill: transparent; cursor: pointer; }
+  #track .hit.on { fill: var(--panel); }
+  #trackinfo { position: sticky; top: 64px; background: var(--panel); border-radius: var(--r); padding: 16px 18px; font-size: 14px; }
+  #trackinfo .kind { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+  #trackinfo h3 { margin: 0 0 6px; font-size: 16px; }
+  #trackinfo p { margin: 0 0 10px; color: var(--text-2); }
+  #trackinfo .file span { display: block; }
   .readout b { color: var(--text); }
 
   .phase { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin: 26px 0 6px; scroll-margin-top: 60px; }
@@ -123,6 +143,8 @@
     .chain { grid-template-columns: 1fr; gap: 2px; }
     .chain .arr { transform: rotate(90deg); height: 18px; }
     .flow { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .trackwrap { grid-template-columns: 1fr; gap: 12px; }
+    #trackinfo { order: -1; top: 48px; z-index: 2; box-shadow: 0 0 0 1px var(--border); }
     .ph { margin-right: 0; }
     .ph::after { display: none; }
     .row { grid-template-columns: 22px 1fr; gap: 4px 10px; }
@@ -167,8 +189,21 @@
 <h2 id="run">The run, stage by stage</h2>
 <p class="sub" id="run-sub"></p>
 <div class="flow" id="flow"></div>
-<div class="readout" id="readout"></div>
-<div id="stages"></div>
+<div class="viewbar">
+  <div class="views" role="tablist" aria-label="How to show the stages">
+    <button role="tab" data-view="list" aria-selected="true">Stage list</button>
+    <button role="tab" data-view="track" aria-selected="false">Track</button>
+  </div>
+  <div class="readout" id="readout"></div>
+</div>
+<div id="view-list"><div id="stages"></div></div>
+<div id="view-track" hidden>
+  <p class="sub">The run drawn as one line, top to bottom. It stays in the code lane and steps out to the model lane only where a model is called.</p>
+  <div class="trackwrap">
+    <div class="trackscroll"><div id="track"></div></div>
+    <aside id="trackinfo"></aside>
+  </div>
+</div>
 <div class="note">Every model call has the same shape: code prepares a bounded input, the model answers, code validates the answer and drops it if a check fails. The model never writes state. <code>autoscout/model_client.py</code> is the single door to the pinned model. Two calls go elsewhere: Jev, and a fallback provider for the PM loglines.</div>
 
 <h2 id="jev">Jev scoring, step by step</h2>
@@ -218,11 +253,12 @@ function rowHtml(r, n) {
     '<span class="file">' + (r.files || []).map(f => "<span>" + fileText(f) + "</span>").join("") + "</span>";
 }
 
-const cells = [], rows = [];
+const cells = [], rows = [], flat = [], hits = [];
 const IDLE = "Hover a block or a row to see the stage.";
 function pick(i) {
   cells.forEach((c, j) => c.classList.toggle("on", j === i));
   rows.forEach((r, j) => r.classList.toggle("on", j === i));
+  if (i >= 0) showInTrack(i);
   $("readout").innerHTML = i < 0 ? IDLE : "<b>" + (i + 1) + ". " + esc(rows[i].dataset.name) + "</b> · " + KIND[rows[i].dataset.kind] + " · " + esc(rows[i].dataset.phase);
 }
 let n = 0;
@@ -235,7 +271,7 @@ DATA.phases.forEach((phase, p) => {
   const head = document.createElement("div"); head.className = "phase"; head.id = "phase-" + p; head.textContent = phase.title;
   $("stages").append(head);
   for (const s of phase.stages) {
-    const i = n++;
+    const i = n++; flat.push({...s, phase: phase.title});
     const c = document.createElement("i"); c.className = "k-" + s.kind; c.title = (i + 1) + ". " + s.name;
     box.querySelector(".blocks").append(c); cells.push(c);
     const r = document.createElement("div"); r.className = "row k-" + s.kind;
@@ -246,6 +282,52 @@ DATA.phases.forEach((phase, p) => {
   }
 });
 $("flow").addEventListener("mouseleave", () => pick(-1)); $("stages").addEventListener("mouseleave", () => pick(-1));
+
+// The track view: the same stages as one line across a code lane and a model lane.
+function showInTrack(i) {
+  hits.forEach((h, j) => h.classList.toggle("on", j === i));
+  const s = flat[i];
+  $("trackinfo").innerHTML = '<div class="kind k-' + s.kind + '"><span class="dot"></span><span class="tag">' + KIND[s.kind] + " · " + esc(s.phase).toUpperCase() +
+    "</span></div><h3>" + (i + 1) + ". " + esc(s.name) + "</h3><p>" + rich(s.what) + '</p><div class="file">' +
+    (s.files || []).map(f => "<span>" + fileText(f) + "</span>").join("") + "</div>";
+}
+(function drawTrack() {
+  const W = 560, ROW = 26, TOP = 36, XC = 172, XM = 252, XL = 284, H = TOP + flat.length * ROW + 6;
+  const y = i => TOP + i * ROW + ROW / 2, x = s => s.kind === "model" ? XM : XC;
+  let v = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="The run as one line across a code lane and a model lane">';
+  v += '<text x="' + XC + '" y="16" text-anchor="middle" font-size="11" class="muted">CODE</text><text x="' + XM + '" y="16" text-anchor="middle" font-size="11" class="muted">MODEL</text>';
+  v += '<line class="lane" x1="' + XC + '" x2="' + XC + '" y1="24" y2="' + H + '"/><line class="lane" x1="' + XM + '" x2="' + XM + '" y1="24" y2="' + H + '"/>';
+  let first = 0;
+  for (const phase of DATA.phases) {
+    const a = TOP + first * ROW, b = a + phase.stages.length * ROW;
+    v += '<line class="bracket" x1="136" x2="136" y1="' + (a + 5) + '" y2="' + (b - 5) + '"/>';
+    v += '<text x="126" y="' + ((a + b) / 2 + 4) + '" text-anchor="end" font-size="12.5" font-weight="600">' + esc(phase.title) + "</text>";
+    first += phase.stages.length;
+  }
+  flat.forEach((s, i) => { v += '<rect class="hit" data-i="' + i + '" x="146" y="' + (TOP + i * ROW) + '" width="' + (W - 146) + '" height="' + ROW + '" rx="6"><title>' + esc(s.name) + "</title></rect>"; });
+  v += '<path class="line" d="' + flat.map((s, i) => (i ? "L" : "M") + x(s) + " " + y(i)).join(" ") + '"/>';
+  flat.forEach((s, i) => {
+    v += '<circle class="node" cx="' + x(s) + '" cy="' + y(i) + '" r="7" fill="var(--' + s.kind + ')"/>';
+    v += '<text pointer-events="none" x="' + XL + '" y="' + (y(i) + 4.5) + '" font-size="13.5"' + (s.kind === "model" ? ' font-weight="600"' : "") +
+      '><tspan class="muted" font-size="11.5">' + (i + 1) + "  </tspan>" + esc(s.name) + "</text>";
+  });
+  $("track").innerHTML = v + "</svg>";
+  $("track").querySelectorAll(".hit").forEach(h => {
+    hits.push(h);
+    h.addEventListener("mouseenter", () => pick(+h.dataset.i));
+    h.addEventListener("click", () => pick(+h.dataset.i));
+  });
+})();
+function setView(view, remember) {
+  const track = view === "track";
+  $("view-list").hidden = track; $("view-track").hidden = !track;
+  document.querySelectorAll(".views button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.view === view)));
+  if (remember) { try { localStorage.setItem("run-view", view); } catch (e) {} }
+}
+document.querySelectorAll(".views button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view, true)));
+let saved = "list"; try { saved = localStorage.getItem("run-view") || "list"; } catch (e) {}
+setView(location.hash === "#track" ? "track" : saved, false);
+showInTrack(flat.findIndex(s => s.kind === "model"));
 pick(-1);
 
 for (const section of DATA.sections) {
