@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Rebuild the page from AutoScout's origin/main and publish it.
+# Usage: ./update [path to the auto-scout checkout]   (default: ../auto-scout)
+set -euo pipefail
+cd "$(dirname "$0")"
+REPO="${1:-../auto-scout}"
+
+git -C "$REPO" fetch --quiet origin
+./build.py --repo "$REPO" --ref origin/main
+
+git add -A
+if git diff --cached --quiet; then
+    echo "nothing changed"
+    exit 0
+fi
+git commit --quiet -m "Rebuild from auto-scout $(git -C "$REPO" rev-parse --short origin/main)"
+git push --quiet origin main
+echo "published"

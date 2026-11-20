@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoScout structure</title>
+<meta name="description" content="How AutoScout is built: which parts are plain code, which call a model, and which are left to the agent.">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #fcfcfb; --panel: #f4f3f0; --border: #e2e1dc;
+    --text: #0b0b0b; --text-2: #52514e; --text-3: #7a7973;
+    --code: #2a78d6; --model: #eb6834; --agent: #6250d6;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --r: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #1a1a19; --panel: #232321; --border: #363632;
+      --text: #f0efec; --text-2: #c3c2b7; --text-3: #94938a;
+      --code: #3987e5; --model: #d95926; --agent: #9085e9;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1a1a19; --panel: #232321; --border: #363632;
+    --text: #f0efec; --text-2: #c3c2b7; --text-3: #94938a;
+    --code: #3987e5; --model: #d95926; --agent: #9085e9;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+  main { max-width: 1000px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.02em; }
+  h2 { font-size: 20px; margin: 56px 0 4px; letter-spacing: -.01em; scroll-margin-top: 60px; }
+  p.sub { margin: 0 0 16px; color: var(--text-2); max-width: 66ch; }
+  .lede { font-size: 17px; color: var(--text-2); max-width: 62ch; margin: 0; }
+  .stamp { margin-top: 12px; font-size: 13px; color: var(--text-3); }
+  code, .file { font-family: var(--mono); font-size: .82em; }
+  .file { color: var(--text-3); overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+  a { color: inherit; }
+
+  nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border); }
+  nav div { max-width: 1000px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 18px; overflow-x: auto; font-size: 13.5px; white-space: nowrap; }
+  nav a { color: var(--text-2); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+  nav b { margin-right: 6px; }
+
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .k-code .dot, .dot.k-code { background: var(--code); }
+  .k-model .dot, .dot.k-model { background: var(--model); }
+  .k-agent .dot, .dot.k-agent { background: var(--agent); border-radius: 50%; }
+  .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em; color: var(--text-3); }
+
+  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 28px; }
+  .tile { background: var(--panel); border-radius: var(--r); padding: 14px 16px; }
+  .tile b { display: block; font-size: 26px; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: 12.5px; color: var(--text-2); }
+
+  .legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .legend > div { border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; }
+  .legend .head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .legend p { margin: 6px 0 0; font-size: 13.5px; color: var(--text-2); }
+
+  .chain { display: grid; grid-template-columns: 1fr 22px 1fr 22px 1fr 22px 1fr; align-items: stretch; }
+  .chain .box { border: 1px solid var(--border); border-radius: var(--r); padding: 12px 14px; }
+  .chain .box b { display: flex; align-items: center; gap: 7px; }
+  .chain .box span { display: block; font-size: 13px; color: var(--text-2); margin-top: 4px; }
+  .arr { display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+  .aside { margin-top: 10px; font-size: 13.5px; color: var(--text-2); max-width: 70ch; }
+
+  /* phase flow */
+  .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; margin-top: 4px; }
+  .ph { position: relative; background: var(--panel); border-radius: var(--r); padding: 12px 12px 10px; margin-right: 16px; cursor: pointer; text-decoration: none; display: block; }
+  .ph:last-child { margin-right: 0; }
+  .ph:not(:last-child)::after { content: "→"; position: absolute; right: -15px; top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: 13px; }
+  .ph b { display: block; font-size: 13.5px; }
+  .ph small { display: block; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .blocks { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 8px; }
+  .blocks i { width: 14px; height: 22px; border-radius: 3px; background: var(--code); }
+  .blocks i.k-model { background: var(--model); }
+  .blocks i.on { outline: 2px solid var(--text); outline-offset: 1px; }
+  .readout { min-height: 22px; font-size: 13.5px; color: var(--text-2); margin: 10px 0 8px; }
+  .readout b { color: var(--text); }
+
+  .phase { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin: 26px 0 6px; scroll-margin-top: 60px; }
+  .row { display: grid; grid-template-columns: 26px 70px 1fr 250px; gap: 12px; padding: 9px 10px; align-items: baseline; border-top: 1px solid var(--border); }
+  .row.nonum { grid-template-columns: 70px 1fr 250px; }
+  .row .n { font-family: var(--mono); font-size: 12px; color: var(--text-3); text-align: right; }
+  .row .kind { display: flex; align-items: center; gap: 7px; }
+  .row .what b { font-weight: 600; }
+  .row .what span { color: var(--text-2); }
+  .row .file span { display: block; }
+  .row.k-model { background: color-mix(in srgb, var(--model) 10%, transparent); }
+  .row.k-agent { background: color-mix(in srgb, var(--agent) 9%, transparent); }
+  .row.on { box-shadow: inset 3px 0 0 var(--text); }
+
+  .note { border-left: 3px solid var(--model); padding: 2px 0 2px 14px; margin: 22px 0 0; max-width: 72ch; color: var(--text-2); }
+  .note.agent { border-left-color: var(--agent); }
+
+  .qs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .q { border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .q b { font-family: var(--mono); font-size: 13px; }
+  .q .qt { font-size: 13.5px; }
+  .q .qn { font-size: 12.5px; color: var(--text-2); margin-top: auto; }
+  .q ul { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+  .q li { padding: 2px 7px; border-radius: 4px; }
+  .q li.hit { color: var(--text); box-shadow: inset 0 0 0 1.5px var(--model); }
+  .scale { display: flex; gap: 2px; }
+  .scale span { flex: 1; text-align: center; font-family: var(--mono); font-size: 12px; padding: 7px 0; border-radius: 4px; color: var(--text); background: color-mix(in srgb, var(--model) calc(12% + var(--i) * 14%), transparent); }
+  .scale-x { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-3); }
+  .formula { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin-top: 16px; font-size: 13.5px; color: var(--text-2); align-items: baseline; }
+  .formula code { color: var(--text); }
+
+  footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-3); max-width: 72ch; }
+
+  @media (max-width: 760px) {
+    h1 { font-size: 25px; }
+    .tiles { grid-template-columns: repeat(2, 1fr); }
+    .legend, .qs { grid-template-columns: 1fr; }
+    .chain { grid-template-columns: 1fr; gap: 2px; }
+    .chain .arr { transform: rotate(90deg); height: 18px; }
+    .flow { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .ph { margin-right: 0; }
+    .ph::after { display: none; }
+    .row { grid-template-columns: 22px 1fr; gap: 4px 10px; }
+    .row.nonum { grid-template-columns: 1fr; }
+    .row .kind, .row .what, .row .file { grid-column: 2; }
+    .row.nonum .kind, .row.nonum .what, .row.nonum .file { grid-column: 1; }
+    .formula { grid-template-columns: 1fr; gap: 2px; }
+    .formula code { margin-bottom: 8px; }
+  }
+</style>
+</head>
+<body>
+<nav><div><b>AutoScout</b><a href="#kinds">Kinds of work</a><a href="#entry">Entry</a><a href="#run">The run</a><a href="#jev">Jev scoring</a><a href="#outside">Outside the run</a><a href="#base">Foundations</a></div></nav>
+<main>
+
+<h1>How AutoScout is built</h1>
+<p class="lede">AutoScout reads book sources every night and gives an editor a short list to review. Most of it is plain code. A model is called at a few fixed points, and an agent works with the editor in chat.</p>
+<div class="stamp" id="stamp"></div>
+<div class="tiles" id="tiles"></div>
+
+<h2 id="kinds">Three kinds of work</h2>
+<p class="sub">Every part of the app below carries one of these marks.</p>
+<div class="legend">
+  <div><div class="head"><span class="dot k-code"></span>Code</div><p>Plain Python. The same input gives the same output. No model.</p></div>
+  <div><div class="head"><span class="dot k-model"></span>Model</div><p>A model call inside the code. Code builds the request, the model answers, code checks the answer.</p></div>
+  <div><div class="head"><span class="dot k-agent"></span>Agent</div><p>The chat agent (Codex or Claude Code). It reads <code>AGENTS.md</code> and decides what to run.</p></div>
+</div>
+
+<h2 id="entry">How a request reaches the code</h2>
+<p class="sub">The editor never runs a command. The agent picks a launcher, and the launcher calls the command line.</p>
+<div class="chain">
+  <div class="box"><b>Editor</b><span>writes in chat, in Russian</span></div>
+  <div class="arr">→</div>
+  <div class="box k-agent"><b><span class="dot"></span>Agent</b><span><code>AGENTS.md</code>, <code>docs/agents/contracts/</code></span></div>
+  <div class="arr">→</div>
+  <div class="box k-code"><b><span class="dot"></span>Launchers</b><span><code>scripts/run-weekly</code>, <code>doctor</code>, <code>check-sources</code> …</span></div>
+  <div class="arr">→</div>
+  <div class="box k-code"><b><span class="dot"></span>Command line</b><span><code>autoscout/__main__.py</code>, <code>autoscout/cli/</code></span></div>
+</div>
+<div class="aside">The nightly run skips the first two boxes: a timer on the run server calls <code>scripts/run-weekly --scheduled</code> directly.</div>
+
+<h2 id="run">The run, stage by stage</h2>
+<p class="sub" id="run-sub"></p>
+<div class="flow" id="flow"></div>
+<div class="readout" id="readout"></div>
+<div id="stages"></div>
+<div class="note">Every model call has the same shape: code prepares a bounded input, the model answers, code validates the answer and drops it if a check fails. The model never writes state. <code>autoscout/model_client.py</code> is the single door to the pinned model. Two calls go elsewhere: Jev, and a fallback provider for the PM loglines.</div>
+
+<h2 id="jev">Jev scoring, step by step</h2>
+<p class="sub">How a book gets its fit score and how the score orders the review. One model step sits between code on both sides. Jev writes no prose: it returns probabilities for fixed answers.</p>
+<div id="sec-jev"></div>
+<div class="phase">The three questions Jev answers per book</div>
+<div class="qs" id="qs"></div>
+<div class="formula">
+  <span>Shown in the review and used for ordering</span><code>score = average fit level, 0 to 4</code>
+  <span>Used only in the offline report and benchmark</span><code>composite = fit / 4 + {{mass_weight}} · P(mass_market) + {{reach_weight}} · P(widely_known)</code>
+</div>
+
+<h2 id="outside">Outside the run</h2>
+<p class="sub">Here the agent leads and the code is the gate. The agent proposes; a command previews the change and writes it only after the editor confirms.</p>
+<div id="sec-outside"></div>
+<div class="note agent">Night source scouting is the most agentic part: the agent searches the web and judges on its own whether a source is a real selection with new books. Code only probes the address and enforces the onboarding gates.</div>
+
+<h2 id="base">Shared foundations</h2>
+<p class="sub">What every part above stands on.</p>
+<div id="sec-base"></div>
+
+<footer id="footer"></footer>
+</main>
+
+<script>
+const DATA = /*DATA*/null;
+const KIND = {code: "CODE", model: "MODEL", agent: "AGENT"};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const rich = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const fileText = f => esc(f.replace(/^autoscout\//, "").replace("::", " · "));
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+
+const m = DATA.meta, st = m.stats;
+$("stamp").textContent = "Built from the code as of " + m.commit_date + " (commit " + m.commit + "). Page generated " + m.generated + ".";
+$("tiles").innerHTML = [
+  [st.stages, "stages in a run"], [st.model_stages, "stages that call a model"], [fmt(st.modules), "Python modules"],
+  [fmt(st.lines), "lines of Python"], [fmt(st.test_files), "test files"]
+].map(([v, l]) => '<div class="tile"><b>' + v + "</b><span>" + l + "</span></div>").join("");
+$("run-sub").innerHTML = st.stages + " stages, in the order <code>WeeklyWorkflow._stages()</code> lists them. " +
+  st.model_stages + " call a model; the other " + (st.stages - st.model_stages) + " are code.";
+
+function rowHtml(r, n) {
+  return (n ? '<span class="n">' + n + "</span>" : "") +
+    '<span class="kind"><span class="dot"></span><span class="tag">' + KIND[r.kind] + "</span></span>" +
+    '<span class="what"><b>' + esc(r.name) + ".</b> <span>" + rich(r.what) + "</span></span>" +
+    '<span class="file">' + (r.files || []).map(f => "<span>" + fileText(f) + "</span>").join("") + "</span>";
+}
+
+const cells = [], rows = [];
+const IDLE = "Hover a block or a row to see the stage.";
+function pick(i) {
+  cells.forEach((c, j) => c.classList.toggle("on", j === i));
+  rows.forEach((r, j) => r.classList.toggle("on", j === i));
+  $("readout").innerHTML = i < 0 ? IDLE : "<b>" + (i + 1) + ". " + esc(rows[i].dataset.name) + "</b> · " + KIND[rows[i].dataset.kind] + " · " + esc(rows[i].dataset.phase);
+}
+let n = 0;
+DATA.phases.forEach((phase, p) => {
+  const models = phase.stages.filter(s => s.kind === "model").length, codes = phase.stages.length - models;
+  const box = document.createElement("a"); box.className = "ph"; box.href = "#phase-" + p;
+  box.innerHTML = "<b>" + esc(phase.title) + '</b><div class="blocks"></div><small>' +
+    (models ? models + " model · " : "") + codes + " code</small>";
+  $("flow").append(box);
+  const head = document.createElement("div"); head.className = "phase"; head.id = "phase-" + p; head.textContent = phase.title;
+  $("stages").append(head);
+  for (const s of phase.stages) {
+    const i = n++;
+    const c = document.createElement("i"); c.className = "k-" + s.kind; c.title = (i + 1) + ". " + s.name;
+    box.querySelector(".blocks").append(c); cells.push(c);
+    const r = document.createElement("div"); r.className = "row k-" + s.kind;
+    r.dataset.name = s.name; r.dataset.kind = s.kind; r.dataset.phase = phase.title;
+    r.innerHTML = rowHtml(s, i + 1);
+    $("stages").append(r); rows.push(r);
+    c.addEventListener("mouseenter", () => pick(i)); r.addEventListener("mouseenter", () => pick(i));
+  }
+});
+$("flow").addEventListener("mouseleave", () => pick(-1)); $("stages").addEventListener("mouseleave", () => pick(-1));
+pick(-1);
+
+for (const section of DATA.sections) {
+  const el = $("sec-" + section.id);
+  for (const r of section.rows) {
+    const d = document.createElement("div"); d.className = "row nonum k-" + r.kind; d.innerHTML = rowHtml(r); el.append(d);
+  }
+}
+
+$("qs").innerHTML = DATA.questions.map(q => {
+  const body = q.scale
+    ? '<div class="scale">' + q.options.map((o, i) => '<span style="--i:' + i + '">' + esc(o) + "</span>").join("") +
+      '</div><div class="scale-x"><span>not a fit</span><span>strong fit</span></div>'
+    : "<ul>" + q.options.map(o => '<li class="' + (o === q.used ? "hit" : "") + '">' + esc(o) + "</li>").join("") + "</ul>";
+  return '<div class="q"><b>' + esc(q.id) + '</b><span class="qt">' + esc(q.text) + "</span>" + body + '<span class="qn">' + esc(q.note) + "</span></div>";
+}).join("");
+
+$("footer").textContent = "This page is generated. The stage order, the counts and the named constants are read from the code; the build fails when a stage or a file named here no longer exists.";
+</script>
+</body>
+</html>

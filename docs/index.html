@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoScout structure</title>
+<meta name="description" content="How AutoScout is built: which parts are plain code, which call a model, and which are left to the agent.">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #fcfcfb; --panel: #f4f3f0; --border: #e2e1dc;
+    --text: #0b0b0b; --text-2: #52514e; --text-3: #7a7973;
+    --code: #2a78d6; --model: #eb6834; --agent: #6250d6;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --r: 10px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #1a1a19; --panel: #232321; --border: #363632;
+      --text: #f0efec; --text-2: #c3c2b7; --text-3: #94938a;
+      --code: #3987e5; --model: #d95926; --agent: #9085e9;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1a1a19; --panel: #232321; --border: #363632;
+    --text: #f0efec; --text-2: #c3c2b7; --text-3: #94938a;
+    --code: #3987e5; --model: #d95926; --agent: #9085e9;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+  main { max-width: 1000px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 30px; line-height: 1.15; margin: 0 0 8px; letter-spacing: -.02em; }
+  h2 { font-size: 20px; margin: 56px 0 4px; letter-spacing: -.01em; scroll-margin-top: 60px; }
+  p.sub { margin: 0 0 16px; color: var(--text-2); max-width: 66ch; }
+  .lede { font-size: 17px; color: var(--text-2); max-width: 62ch; margin: 0; }
+  .stamp { margin-top: 12px; font-size: 13px; color: var(--text-3); }
+  code, .file { font-family: var(--mono); font-size: .82em; }
+  .file { color: var(--text-3); overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
+  a { color: inherit; }
+
+  nav { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--border); }
+  nav div { max-width: 1000px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 18px; overflow-x: auto; font-size: 13.5px; white-space: nowrap; }
+  nav a { color: var(--text-2); text-decoration: none; }
+  nav a:hover { color: var(--text); }
+  nav b { margin-right: 6px; }
+
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .k-code .dot, .dot.k-code { background: var(--code); }
+  .k-model .dot, .dot.k-model { background: var(--model); }
+  .k-agent .dot, .dot.k-agent { background: var(--agent); border-radius: 50%; }
+  .tag { font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em; color: var(--text-3); }
+
+  .tiles { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 28px; }
+  .tile { background: var(--panel); border-radius: var(--r); padding: 14px 16px; }
+  .tile b { display: block; font-size: 26px; line-height: 1.1; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: 12.5px; color: var(--text-2); }
+
+  .legend { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .legend > div { border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; }
+  .legend .head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .legend p { margin: 6px 0 0; font-size: 13.5px; color: var(--text-2); }
+
+  .chain { display: grid; grid-template-columns: 1fr 22px 1fr 22px 1fr 22px 1fr; align-items: stretch; }
+  .chain .box { border: 1px solid var(--border); border-radius: var(--r); padding: 12px 14px; }
+  .chain .box b { display: flex; align-items: center; gap: 7px; }
+  .chain .box span { display: block; font-size: 13px; color: var(--text-2); margin-top: 4px; }
+  .arr { display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+  .aside { margin-top: 10px; font-size: 13.5px; color: var(--text-2); max-width: 70ch; }
+
+  /* phase flow */
+  .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0; margin-top: 4px; }
+  .ph { position: relative; background: var(--panel); border-radius: var(--r); padding: 12px 12px 10px; margin-right: 16px; cursor: pointer; text-decoration: none; display: block; }
+  .ph:last-child { margin-right: 0; }
+  .ph:not(:last-child)::after { content: "→"; position: absolute; right: -15px; top: 50%; transform: translateY(-50%); color: var(--text-3); font-size: 13px; }
+  .ph b { display: block; font-size: 13.5px; }
+  .ph small { display: block; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .blocks { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 8px; }
+  .blocks i { width: 14px; height: 22px; border-radius: 3px; background: var(--code); }
+  .blocks i.k-model { background: var(--model); }
+  .blocks i.on { outline: 2px solid var(--text); outline-offset: 1px; }
+  .readout { min-height: 22px; font-size: 13.5px; color: var(--text-2); margin: 10px 0 8px; }
+  .readout b { color: var(--text); }
+
+  .phase { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); margin: 26px 0 6px; scroll-margin-top: 60px; }
+  .row { display: grid; grid-template-columns: 26px 70px 1fr 250px; gap: 12px; padding: 9px 10px; align-items: baseline; border-top: 1px solid var(--border); }
+  .row.nonum { grid-template-columns: 70px 1fr 250px; }
+  .row .n { font-family: var(--mono); font-size: 12px; color: var(--text-3); text-align: right; }
+  .row .kind { display: flex; align-items: center; gap: 7px; }
+  .row .what b { font-weight: 600; }
+  .row .what span { color: var(--text-2); }
+  .row .file span { display: block; }
+  .row.k-model { background: color-mix(in srgb, var(--model) 10%, transparent); }
+  .row.k-agent { background: color-mix(in srgb, var(--agent) 9%, transparent); }
+  .row.on { box-shadow: inset 3px 0 0 var(--text); }
+
+  .note { border-left: 3px solid var(--model); padding: 2px 0 2px 14px; margin: 22px 0 0; max-width: 72ch; color: var(--text-2); }
+  .note.agent { border-left-color: var(--agent); }
+
+  .qs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .q { border: 1px solid var(--border); border-radius: var(--r); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .q b { font-family: var(--mono); font-size: 13px; }
+  .q .qt { font-size: 13.5px; }
+  .q .qn { font-size: 12.5px; color: var(--text-2); margin-top: auto; }
+  .q ul { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+  .q li { padding: 2px 7px; border-radius: 4px; }
+  .q li.hit { color: var(--text); box-shadow: inset 0 0 0 1.5px var(--model); }
+  .scale { display: flex; gap: 2px; }
+  .scale span { flex: 1; text-align: center; font-family: var(--mono); font-size: 12px; padding: 7px 0; border-radius: 4px; color: var(--text); background: color-mix(in srgb, var(--model) calc(12% + var(--i) * 14%), transparent); }
+  .scale-x { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-3); }
+  .formula { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; margin-top: 16px; font-size: 13.5px; color: var(--text-2); align-items: baseline; }
+  .formula code { color: var(--text); }
+
+  footer { margin-top: 64px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; color: var(--text-3); max-width: 72ch; }
+
+  @media (max-width: 760px) {
+    h1 { font-size: 25px; }
+    .tiles { grid-template-columns: repeat(2, 1fr); }
+    .legend, .qs { grid-template-columns: 1fr; }
+    .chain { grid-template-columns: 1fr; gap: 2px; }
+    .chain .arr { transform: rotate(90deg); height: 18px; }
+    .flow { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .ph { margin-right: 0; }
+    .ph::after { display: none; }
+    .row { grid-template-columns: 22px 1fr; gap: 4px 10px; }
+    .row.nonum { grid-template-columns: 1fr; }
+    .row .kind, .row .what, .row .file { grid-column: 2; }
+    .row.nonum .kind, .row.nonum .what, .row.nonum .file { grid-column: 1; }
+    .formula { grid-template-columns: 1fr; gap: 2px; }
+    .formula code { margin-bottom: 8px; }
+  }
+</style>
+</head>
+<body>
+<nav><div><b>AutoScout</b><a href="#kinds">Kinds of work</a><a href="#entry">Entry</a><a href="#run">The run</a><a href="#jev">Jev scoring</a><a href="#outside">Outside the run</a><a href="#base">Foundations</a></div></nav>
+<main>
+
+<h1>How AutoScout is built</h1>
+<p class="lede">AutoScout reads book sources every night and gives an editor a short list to review. Most of it is plain code. A model is called at a few fixed points, and an agent works with the editor in chat.</p>
+<div class="stamp" id="stamp"></div>
+<div class="tiles" id="tiles"></div>
+
+<h2 id="kinds">Three kinds of work</h2>
+<p class="sub">Every part of the app below carries one of these marks.</p>
+<div class="legend">
+  <div><div class="head"><span class="dot k-code"></span>Code</div><p>Plain Python. The same input gives the same output. No model.</p></div>
+  <div><div class="head"><span class="dot k-model"></span>Model</div><p>A model call inside the code. Code builds the request, the model answers, code checks the answer.</p></div>
+  <div><div class="head"><span class="dot k-agent"></span>Agent</div><p>The chat agent (Codex or Claude Code). It reads <code>AGENTS.md</code> and decides what to run.</p></div>
+</div>
+
+<h2 id="entry">How a request reaches the code</h2>
+<p class="sub">The editor never runs a command. The agent picks a launcher, and the launcher calls the command line.</p>
+<div class="chain">
+  <div class="box"><b>Editor</b><span>writes in chat, in Russian</span></div>
+  <div class="arr">→</div>
+  <div class="box k-agent"><b><span class="dot"></span>Agent</b><span><code>AGENTS.md</code>, <code>docs/agents/contracts/</code></span></div>
+  <div class="arr">→</div>
+  <div class="box k-code"><b><span class="dot"></span>Launchers</b><span><code>scripts/run-weekly</code>, <code>doctor</code>, <code>check-sources</code> …</span></div>
+  <div class="arr">→</div>
+  <div class="box k-code"><b><span class="dot"></span>Command line</b><span><code>autoscout/__main__.py</code>, <code>autoscout/cli/</code></span></div>
+</div>
+<div class="aside">The nightly run skips the first two boxes: a timer on the run server calls <code>scripts/run-weekly --scheduled</code> directly.</div>
+
+<h2 id="run">The run, stage by stage</h2>
+<p class="sub" id="run-sub"></p>
+<div class="flow" id="flow"></div>
+<div class="readout" id="readout"></div>
+<div id="stages"></div>
+<div class="note">Every model call has the same shape: code prepares a bounded input, the model answers, code validates the answer and drops it if a check fails. The model never writes state. <code>autoscout/model_client.py</code> is the single door to the pinned model. Two calls go elsewhere: Jev, and a fallback provider for the PM loglines.</div>
+
+<h2 id="jev">Jev scoring, step by step</h2>
+<p class="sub">How a book gets its fit score and how the score orders the review. One model step sits between code on both sides. Jev writes no prose: it returns probabilities for fixed answers.</p>
+<div id="sec-jev"></div>
+<div class="phase">The three questions Jev answers per book</div>
+<div class="qs" id="qs"></div>
+<div class="formula">
+  <span>Shown in the review and used for ordering</span><code>score = average fit level, 0 to 4</code>
+  <span>Used only in the offline report and benchmark</span><code>composite = fit / 4 + 0.15 · P(mass_market) + 0.1 · P(widely_known)</code>
+</div>
+
+<h2 id="outside">Outside the run</h2>
+<p class="sub">Here the agent leads and the code is the gate. The agent proposes; a command previews the change and writes it only after the editor confirms.</p>
+<div id="sec-outside"></div>
+<div class="note agent">Night source scouting is the most agentic part: the agent searches the web and judges on its own whether a source is a real selection with new books. Code only probes the address and enforces the onboarding gates.</div>
+
+<h2 id="base">Shared foundations</h2>
+<p class="sub">What every part above stands on.</p>
+<div id="sec-base"></div>
+
+<footer id="footer"></footer>
+</main>
+
+<script>
+const DATA = {"meta": {"commit": "f50ab0be", "commit_date": "2026-11-20", "generated": "2026-11-20", "stats": {"stages": 31, "model_stages": 6, "modules": 234, "lines": 137179, "test_files": 429, "launchers": 44}}, "facts": {"jev_model": "jev-1.13.0", "jev_workers": 6, "jev_budget": 180, "mass_weight": 0.15, "reach_weight": 0.1, "fit_levels": ["0", "1", "2", "3", "4"], "audience_options": ["mass_market", "educated_general", "niche_specialist", "practical_manual", "unclear"], "reach_options": ["widely_known", "established_in_field", "little_known", "unclear"], "extraction_model": "gpt-5.6-luna", "description_model": "gpt-5.6-luna"}, "phases": [{"title": "Prepare", "stages": [{"id": "_claim_run_lock", "kind": "code", "name": "Take the run lock", "what": "Only in a scheduled run: it skips itself when another run is live.", "files": ["autoscout/weekly_workflow.py"]}, {"id": "_check_retry_evidence", "kind": "code", "name": "Check retry evidence", "what": "Decides whether an earlier failed run can be resumed.", "files": ["autoscout/weekly_workflow.py"]}, {"id": "_update_repository", "kind": "code", "name": "Update the repository", "what": "Pulls the latest state. Never resets or force-pushes.", "files": ["autoscout/git_envelope.py"]}, {"id": "_start_operation", "kind": "code", "name": "Start the operation", "what": "Binds this run to one operation id and date.", "files": ["autoscout/weekly_workflow.py"]}, {"id": "_check_toolchain", "kind": "code", "name": "Check the toolchain", "what": "Confirms the Codex CLI and the search adapter answer. Sends one tiny test request to the model.", "files": ["autoscout/toolchain_preflight.py"]}]}, {"title": "Collect", "stages": [{"id": "_start_kirkus_pass", "kind": "code", "name": "Start the Kirkus pass", "what": "Reads the coming-soon listing in the background, with a long pause between requests.", "files": ["autoscout/kirkus_precollection.py", "autoscout/kirkus_listing.py"]}, {"id": "_run_pm_pass", "kind": "code", "name": "PM pass", "what": "Reads new deal emails and parses each deal.", "files": ["autoscout/pm_precollection.py", "autoscout/pm_deal_email.py"]}, {"id": "_run_pw_pass", "kind": "code", "name": "PW pass", "what": "Fetches the issue PDF and parses the reviews.", "files": ["autoscout/pw_precollection.py", "autoscout/pw_issue_parser.py"]}, {"id": "_capture", "kind": "code", "name": "Capture source pages", "what": "Fetches every configured source and proves each page is the declared one. A changed layout fails the source.", "files": ["autoscout/source_collection.py", "autoscout/source_page_identity.py"]}]}, {"title": "Extract", "stages": [{"id": "_extract_main_batch", "kind": "model", "name": "Extract books from pages", "what": "The model (`gpt-5.6-luna`) reads each captured page and returns book rows: title, author, publisher. Code checks provenance and retries within a budget.", "files": ["autoscout/codex_recovery.py", "autoscout/source_collectors/agent_extraction.py"]}, {"id": "_join_kirkus_pass", "kind": "code", "name": "Join the Kirkus pass", "what": "Waits for the background pass and takes its result.", "files": ["autoscout/kirkus_precollection.py"]}, {"id": "_record_source_processing", "kind": "code", "name": "Record source processing", "what": "Notes per source what was read and what failed.", "files": ["autoscout/source_row_history.py"]}, {"id": "_finalize", "kind": "code", "name": "Finalize extraction", "what": "Turns accepted extractions into one replay config.", "files": ["autoscout/codex_workflow.py::finalize_codex_run"]}]}, {"title": "Screen and merge", "stages": [{"id": "_run_pipeline", "kind": "code", "name": "Run the pipeline", "what": "Groups mentions into one book, checks eligibility, Russian edition and visible risk, sets the priority label, applies editor feedback and hard rules, hides rejected books without a material change.", "files": ["autoscout/pipeline.py::run_pipeline", "autoscout/scouting_candidates.py", "autoscout/candidate_identity.py"]}, {"id": "_complete_isbns", "kind": "code", "name": "Complete ISBNs", "what": "Fills a missing ISBN from the source link, the captured page, the book page, or Open Library.", "files": ["autoscout/isbn_completion.py"]}]}, {"title": "Describe", "stages": [{"id": "_enrich_descriptions", "kind": "model", "name": "Write grounded descriptions", "what": "Code searches through the adapter, fetches pages and checks they are about this book. The model (`gpt-5.6-luna`) writes the Russian description from that evidence. Code screens the text.", "files": ["autoscout/grounded_description.py", "autoscout/description_enrichment.py"]}, {"id": "_adjudicate_descriptions", "kind": "model", "name": "Adjudicate descriptions", "what": "The model decides one thing: does this page really describe this book? Code verifies the citations.", "files": ["autoscout/description_adjudication.py"]}, {"id": "_write_pm_logline_descriptions", "kind": "model", "name": "PM logline descriptions", "what": "The model restates the deal's one-sentence logline in Russian, adding nothing.", "files": ["autoscout/pm_logline_description.py"]}, {"id": "_complete_original_editions", "kind": "model", "name": "Find original editions", "what": "The model proposes the original title of a translation. Open Library must confirm it.", "files": ["autoscout/original_edition_completion.py"]}, {"id": "_complete_work_age", "kind": "code", "name": "Record the age of the work", "what": "Looks up the first publication year and edition count in Open Library, so an old book on a new list does not read as new. A translation takes the age of its original.", "files": ["autoscout/work_age.py"]}, {"id": "_refresh_after_descriptions", "kind": "code", "name": "Refresh after descriptions", "what": "Re-runs risk screening and profile rules on the new text.", "files": ["autoscout/pipeline.py::refresh_post_enrichment_artifacts"]}]}, {"title": "Rank and publish", "stages": [{"id": "_score_editorial_fit", "kind": "model", "name": "Score editorial fit", "what": "Jev scores each book of the run, then the undecided books of earlier runs. Detail in the Jev section below.", "files": ["autoscout/editorial_fit_shadow.py", "autoscout/jev_adapter.py"]}, {"id": "_render_review", "kind": "code", "name": "Render the review", "what": "Builds the HTML review with its tabs, reads the newest score of each book and orders the books by it.", "files": ["autoscout/review_rendering.py", "autoscout/html_review.py", "autoscout/fit_scores.py"]}, {"id": "_record_source_failure_streaks", "kind": "code", "name": "Record source failure streaks", "what": "Counts failed nights in a row per source, so a broken source stands out from one bad night.", "files": ["autoscout/source_failure_streaks.py"]}, {"id": "_check_health", "kind": "code", "name": "Check run health", "what": "Validates the artifacts against each other.", "files": ["autoscout/run_health.py"]}, {"id": "_record_completion_facts", "kind": "code", "name": "Record completion facts", "what": "New, updated, description coverage, source problems.", "files": ["autoscout/weekly_workflow.py"]}, {"id": "_decide_outcome", "kind": "code", "name": "Decide the outcome", "what": "Complete, or attention needed, by fixed rules.", "files": ["autoscout/weekly_workflow.py"]}, {"id": "_export_state", "kind": "code", "name": "Export state", "what": "Writes the SQLite state out as sharded JSON.", "files": ["autoscout/state_store"]}, {"id": "_scan_artifacts_for_secrets", "kind": "code", "name": "Scan artifacts for secrets", "what": "Blocks publication if a key leaked into output.", "files": ["autoscout/secret_redaction.py"]}, {"id": "_open_review", "kind": "code", "name": "Open the review", "what": "Only in a run started by hand; the server has no screen.", "files": ["autoscout/weekly_workflow.py"]}, {"id": "_finalize_repository", "kind": "code", "name": "Finalize the repository", "what": "Commits and pushes the state files.", "files": ["autoscout/git_envelope.py"]}]}], "sections": [{"id": "jev", "rows": [{"kind": "code", "name": "Build the input", "what": "A strict allowlist of public book facts: title, authors, descriptions, source signals. Editor decisions, notes, priority and the taste profile are never sent.", "files": ["autoscout/editorial_fit_shadow.py::fit_model_state"]}, {"kind": "model", "name": "Ask Jev", "what": "One request per book, model `jev-1.13.0`, three closed questions. 6 parallel workers, 180 s for the whole stage.", "files": ["autoscout/jev_adapter.py::LiveJevAdapter"]}, {"kind": "code", "name": "Validate and combine", "what": "Rejects a malformed answer or a different model. Turns the probabilities into the fit level and the composite by a fixed formula.", "files": ["autoscout/jev_adapter.py::validate_response", "autoscout/editorial_fit_shadow.py::combine_answers"]}, {"kind": "code", "name": "Record", "what": "Writes one score file for the run and one for the undecided older books. No state file changes; a failure never stops the run.", "files": ["autoscout/editorial_fit_shadow.py::score_weekly_run", "autoscout/editorial_fit_shadow.py::score_undecided_backlog"]}, {"kind": "code", "name": "Show and order", "what": "The review reads each book's newest score. With `editorial_fit_ordering` on, books of one date go highest first, unscored after them, priority D last.", "files": ["autoscout/fit_scores.py::recorded_fit_scores", "autoscout/review_rendering.py"]}, {"kind": "code", "name": "Compare with the editor", "what": "Offline and read-only: how well each ordering separates approved from rejected books, and a pass or fail benchmark on held-out runs.", "files": ["scripts/editorial-fit-shadow", "autoscout/ranking_benchmark.py"]}]}, {"id": "outside", "rows": [{"kind": "agent", "name": "Editor feedback", "what": "The agent finds the exact book, runs the preview, and asks one question in Russian.", "files": ["AGENTS.md"]}, {"kind": "code", "name": "… preview and write", "what": "The preview changes nothing. The write needs `--confirmed-by-editor`.", "files": ["autoscout/editor_feedback.py", "autoscout/review_row_resolution.py"]}, {"kind": "code", "name": "Taste profile", "what": "Hard rules hide books; soft preferences nudge the order.", "files": ["autoscout/editorial_taste_profile.py"]}, {"kind": "code", "name": "Merge duplicate books", "what": "Computes the full merge plan as a dry run; the agent explains it and asks.", "files": ["autoscout/identity_corrections.py", "autoscout/probable_duplicates.py"]}, {"kind": "code", "name": "Doctor", "what": "Read-only diagnosis of a blocked run, plus repair and recovery on request.", "files": ["autoscout/doctor.py", "autoscout/doctor_repairs.py", "autoscout/doctor_recovery.py"]}, {"kind": "agent", "name": "Night source scouting", "what": "Searches the web, picks candidate sources, judges novelty, writes a morning report.", "files": [".claude/skills/scout-sources"]}, {"kind": "code", "name": "… probe and onboard", "what": "Bounded fetch of a proposed URL, policy check, scaffold, transaction.", "files": ["autoscout/source_probe.py", "autoscout/source_onboarding_*.py"]}, {"kind": "code", "name": "Model qualification", "what": "A fixed test harness that measures a model before it is pinned.", "files": ["autoscout/model_qualification.py", "autoscout/description_qualification.py"]}, {"kind": "agent", "name": "Development", "what": "The agent implements issues; `scripts/check` gates the merge.", "files": ["docs/agents/implementation-workflow.md"]}]}, {"id": "base", "rows": [{"kind": "code", "name": "State Store", "what": "The one place canonical state is read and written: SQLite, exported as sharded JSON. Candidate History lives here.", "files": ["autoscout/state_store"]}, {"kind": "code", "name": "Config", "what": "Sources, switches, and the model pin.", "files": ["autoscout/config.py", "configs"]}, {"kind": "code", "name": "Model door", "what": "Runs `codex exec` in a read-only sandbox for every stage that needs the pinned model.", "files": ["autoscout/model_client.py", "autoscout/codex_model_pin.py"]}, {"kind": "code", "name": "Search adapter", "what": "A loopback HTTP service on the run server that holds the search key.", "files": ["autoscout/grounded_search_adapter.py"]}, {"kind": "code", "name": "Code gate", "what": "The server runs `scripts/check` on new code before a scheduled run uses it.", "files": ["autoscout/code_gate.py"]}, {"kind": "code", "name": "Tests", "what": "Fixture runs must be byte-identical.", "files": ["tests", "scripts/check"]}]}], "questions": [{"id": "fit", "text": "How well does the book suit a publisher of popular nonfiction for a wide audience?", "scale": true, "note": "Jev returns a probability per level. Code takes the average level: that is the score the review shows.", "options": ["0", "1", "2", "3", "4"]}, {"id": "audience", "text": "Who is the book written for?", "used": "mass_market", "note": "Only P(mass_market) is used, weight 0.15.", "options": ["mass_market", "educated_general", "niche_specialist", "practical_manual", "unclear"]}, {"id": "author_reach", "text": "How well known is the author, judging only from the supplied facts?", "used": "widely_known", "note": "Only P(widely_known) is used, weight 0.1.", "options": ["widely_known", "established_in_field", "little_known", "unclear"]}]};
+const KIND = {code: "CODE", model: "MODEL", agent: "AGENT"};
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const rich = s => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+const fileText = f => esc(f.replace(/^autoscout\//, "").replace("::", " · "));
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+
+const m = DATA.meta, st = m.stats;
+$("stamp").textContent = "Built from the code as of " + m.commit_date + " (commit " + m.commit + "). Page generated " + m.generated + ".";
+$("tiles").innerHTML = [
+  [st.stages, "stages in a run"], [st.model_stages, "stages that call a model"], [fmt(st.modules), "Python modules"],
+  [fmt(st.lines), "lines of Python"], [fmt(st.test_files), "test files"]
+].map(([v, l]) => '<div class="tile"><b>' + v + "</b><span>" + l + "</span></div>").join("");
+$("run-sub").innerHTML = st.stages + " stages, in the order <code>WeeklyWorkflow._stages()</code> lists them. " +
+  st.model_stages + " call a model; the other " + (st.stages - st.model_stages) + " are code.";
+
+function rowHtml(r, n) {
+  return (n ? '<span class="n">' + n + "</span>" : "") +
+    '<span class="kind"><span class="dot"></span><span class="tag">' + KIND[r.kind] + "</span></span>" +
+    '<span class="what"><b>' + esc(r.name) + ".</b> <span>" + rich(r.what) + "</span></span>" +
+    '<span class="file">' + (r.files || []).map(f => "<span>" + fileText(f) + "</span>").join("") + "</span>";
+}
+
+const cells = [], rows = [];
+const IDLE = "Hover a block or a row to see the stage.";
+function pick(i) {
+  cells.forEach((c, j) => c.classList.toggle("on", j === i));
+  rows.forEach((r, j) => r.classList.toggle("on", j === i));
+  $("readout").innerHTML = i < 0 ? IDLE : "<b>" + (i + 1) + ". " + esc(rows[i].dataset.name) + "</b> · " + KIND[rows[i].dataset.kind] + " · " + esc(rows[i].dataset.phase);
+}
+let n = 0;
+DATA.phases.forEach((phase, p) => {
+  const models = phase.stages.filter(s => s.kind === "model").length, codes = phase.stages.length - models;
+  const box = document.createElement("a"); box.className = "ph"; box.href = "#phase-" + p;
+  box.innerHTML = "<b>" + esc(phase.title) + '</b><div class="blocks"></div><small>' +
+    (models ? models + " model · " : "") + codes + " code</small>";
+  $("flow").append(box);
+  const head = document.createElement("div"); head.className = "phase"; head.id = "phase-" + p; head.textContent = phase.title;
+  $("stages").append(head);
+  for (const s of phase.stages) {
+    const i = n++;
+    const c = document.createElement("i"); c.className = "k-" + s.kind; c.title = (i + 1) + ". " + s.name;
+    box.querySelector(".blocks").append(c); cells.push(c);
+    const r = document.createElement("div"); r.className = "row k-" + s.kind;
+    r.dataset.name = s.name; r.dataset.kind = s.kind; r.dataset.phase = phase.title;
+    r.innerHTML = rowHtml(s, i + 1);
+    $("stages").append(r); rows.push(r);
+    c.addEventListener("mouseenter", () => pick(i)); r.addEventListener("mouseenter", () => pick(i));
+  }
+});
+$("flow").addEventListener("mouseleave", () => pick(-1)); $("stages").addEventListener("mouseleave", () => pick(-1));
+pick(-1);
+
+for (const section of DATA.sections) {
+  const el = $("sec-" + section.id);
+  for (const r of section.rows) {
+    const d = document.createElement("div"); d.className = "row nonum k-" + r.kind; d.innerHTML = rowHtml(r); el.append(d);
+  }
+}
+
+$("qs").innerHTML = DATA.questions.map(q => {
+  const body = q.scale
+    ? '<div class="scale">' + q.options.map((o, i) => '<span style="--i:' + i + '">' + esc(o) + "</span>").join("") +
+      '</div><div class="scale-x"><span>not a fit</span><span>strong fit</span></div>'
+    : "<ul>" + q.options.map(o => '<li class="' + (o === q.used ? "hit" : "") + '">' + esc(o) + "</li>").join("") + "</ul>";
+  return '<div class="q"><b>' + esc(q.id) + '</b><span class="qt">' + esc(q.text) + "</span>" + body + '<span class="qn">' + esc(q.note) + "</span></div>";
+}).join("");
+
+$("footer").textContent = "This page is generated. The stage order, the counts and the named constants are read from the code; the build fails when a stage or a file named here no longer exists.";
+</script>
+</body>
+</html>
