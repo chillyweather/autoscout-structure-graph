@@ -27,6 +27,8 @@ HERE = Path(__file__).resolve().parent
 PATHS = ["autoscout", "configs", "scripts", "deploy", "tests", "docs/agents", ".claude/skills", "AGENTS.md"]
 WORKFLOW = "autoscout/weekly_workflow.py"
 KINDS = {"code", "model", "agent"}
+# The file names on the page open here. The repository is private: a visitor without access gets GitHub's 404.
+REPO_URL = "https://github.com/chillyweather/auto-scout"
 
 
 def git(repo: Path, *args: str) -> str:
@@ -92,6 +94,23 @@ def check_ref(tree: Path, ref: str) -> str | None:
     return None
 
 
+def link_for(tree: Path, ref: str) -> str:
+    """Where a file reference opens in the AutoScout repository: the file (at the
+    symbol's line), the folder, or for a glob the folder that holds the matches."""
+    path, _, symbol = ref.partition("::")
+    if any(char in path for char in "*?"):
+        return f"{REPO_URL}/tree/main/{Path(path).parent.as_posix()}"
+    target = tree / path
+    if target.is_dir():
+        return f"{REPO_URL}/tree/main/{path}"
+    url = f"{REPO_URL}/blob/main/{path}"
+    if symbol:
+        for number, line in enumerate(target.read_text().splitlines(), 1):
+            if re.match(rf"\s*(def|class)\s+{re.escape(symbol)}\b", line):
+                return f"{url}#L{number}"
+    return url
+
+
 def substitute(value: Any, facts: dict[str, Any]) -> Any:
     if isinstance(value, str):
         return re.sub(r"\{\{(\w+)\}\}", lambda m: str(facts[m.group(1)]), value)
@@ -146,6 +165,8 @@ def main() -> int:
                 if problem:
                     problems.append(f"{row['name']}: {problem}")
 
+        links = {ref: link_for(tree, ref) for row in rows for ref in row.get("files", []) if not check_ref(tree, ref)}
+
         if problems:
             print("structure.json disagrees with the code:", file=sys.stderr)
             for problem in problems:
@@ -186,6 +207,7 @@ def main() -> int:
         },
         facts,
     )
+    data["links"] = links
     for question in data["questions"]:
         question["options"] = facts[question.pop("options_fact")]
 

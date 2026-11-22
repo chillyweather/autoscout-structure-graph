@@ -35,6 +35,7 @@ Read from the code on every build:
 - the stage order, from the tuple in `WeeklyWorkflow._stages()`;
 - the counts in the tiles;
 - every value listed under `facts` in `structure.json` (model names, Jev weights, answer options).
+- the link behind each file name: the file in the AutoScout repository on `main`, at the line of the `def` or `class` when the entry names one; a folder or a glob opens the folder. AutoScout is private, so the links work only for someone with access to it.
 
 ## When the build fails
 
