@@ -17,7 +17,7 @@
     {"title": "Collect", "stages": ["_start_kirkus_pass", "_run_pm_pass", "_run_pw_pass", "_capture"]},
     {"title": "Extract", "stages": ["_extract_main_batch", "_join_kirkus_pass", "_record_source_processing", "_finalize"]},
     {"title": "Screen and merge", "stages": ["_run_pipeline", "_complete_isbns"]},
-    {"title": "Describe", "stages": ["_enrich_descriptions", "_adjudicate_descriptions", "_write_pm_logline_descriptions", "_complete_original_editions", "_complete_work_age", "_refresh_after_descriptions"]},
+    {"title": "Describe", "stages": ["_enrich_descriptions", "_adjudicate_descriptions", "_write_pm_logline_descriptions", "_complete_original_editions", "_complete_work_age", "_complete_russian_editions", "_refresh_after_descriptions"]},
     {"title": "Rank and publish", "stages": ["_score_editorial_fit", "_render_review", "_record_source_failure_streaks", "_check_health", "_record_completion_facts", "_decide_outcome", "_export_state", "_scan_artifacts_for_secrets", "_open_review", "_finalize_repository"]}
   ],
 
@@ -42,6 +42,7 @@
     "_write_pm_logline_descriptions": {"kind": "model", "name": "PM logline descriptions", "what": "The model restates the deal's one-sentence logline in Russian, adding nothing.", "files": ["autoscout/pm_logline_description.py"]},
     "_complete_original_editions": {"kind": "model", "name": "Find original editions", "what": "The model proposes the original title of a translation. Open Library must confirm it.", "files": ["autoscout/original_edition_completion.py"]},
     "_complete_work_age": {"kind": "code", "name": "Record the age of the work", "what": "Looks up the first publication year and edition count in Open Library, so an old book on a new list does not read as new. A translation takes the age of its original.", "files": ["autoscout/work_age.py"]},
+    "_complete_russian_editions": {"kind": "model", "name": "Find Russian editions", "what": "Only when switched on in the weekly config. Code finds the author's name in Cyrillic, then asks the Russian State Library and LitRes for that author's books. The model decides one thing: is this the same work? Code checks the language, the year and the author. A find is a mark in the review, never a reason to hide the book.", "files": ["autoscout/russian_edition_completion.py", "autoscout/russian_edition_sources.py", "autoscout/russian_edition.py"]},
     "_refresh_after_descriptions": {"kind": "code", "name": "Refresh after descriptions", "what": "Re-runs risk screening and profile rules on the new text.", "files": ["autoscout/pipeline.py::refresh_post_enrichment_artifacts"]},
     "_score_editorial_fit": {"kind": "model", "name": "Score editorial fit", "what": "Jev scores each book of the run, then the undecided books of earlier runs. Detail in the Jev section below.", "files": ["autoscout/editorial_fit_shadow.py", "autoscout/jev_adapter.py"]},
     "_render_review": {"kind": "code", "name": "Render the review", "what": "Builds the HTML review with its tabs, reads the newest score of each book and orders the books by it.", "files": ["autoscout/review_rendering.py", "autoscout/html_review.py", "autoscout/fit_scores.py"]},
@@ -76,7 +77,7 @@
     {
       "id": "outside",
       "rows": [
-        {"kind": "agent", "name": "Editor feedback", "what": "The agent finds the exact book, runs the preview, and asks one question in Russian.", "files": ["AGENTS.md"]},
+        {"kind": "agent", "name": "Editor feedback", "what": "The agent finds the exact book, runs the preview, and asks one question in Russian. The always-on rules are in `AGENTS.md`; the steps are in a contract file read on request.", "files": ["AGENTS.md", "docs/agents/contracts/editor-feedback.md"]},
         {"kind": "code", "name": "… preview and write", "what": "The preview changes nothing. The write needs `--confirmed-by-editor`.", "files": ["autoscout/editor_feedback.py", "autoscout/review_row_resolution.py"]},
         {"kind": "code", "name": "Taste profile", "what": "Hard rules hide books; soft preferences nudge the order.", "files": ["autoscout/editorial_taste_profile.py"]},
         {"kind": "code", "name": "Merge duplicate books", "what": "Computes the full merge plan as a dry run; the agent explains it and asks.", "files": ["autoscout/identity_corrections.py", "autoscout/probable_duplicates.py"]},
@@ -84,7 +85,7 @@
         {"kind": "agent", "name": "Night source scouting", "what": "Searches the web, picks candidate sources, judges novelty, writes a morning report.", "files": [".claude/skills/scout-sources"]},
         {"kind": "code", "name": "… probe and onboard", "what": "Bounded fetch of a proposed URL, policy check, scaffold, transaction.", "files": ["autoscout/source_probe.py", "autoscout/source_onboarding_*.py"]},
         {"kind": "code", "name": "Model qualification", "what": "A fixed test harness that measures a model before it is pinned.", "files": ["autoscout/model_qualification.py", "autoscout/description_qualification.py"]},
-        {"kind": "agent", "name": "Development", "what": "The agent implements issues; `scripts/check` gates the merge.", "files": ["docs/agents/implementation-workflow.md"]}
+        {"kind": "agent", "name": "Development", "what": "A lead agent plans, briefs and verifies; a second model writes the code; a third reviews it. `scripts/check` gates the merge.", "files": ["docs/agents/implementation-workflow.md"]}
       ]
     },
     {
