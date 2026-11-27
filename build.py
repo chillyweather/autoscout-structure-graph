@@ -24,7 +24,7 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 # Only these paths are read from the AutoScout ref.
-PATHS = ["autoscout", "configs", "scripts", "deploy", "tests", "docs/agents", ".claude/skills", "AGENTS.md"]
+PATHS = ["autoscout", "configs", "scripts", "deploy", "tests", "docs/agents", "docs/operator", ".claude/skills", "AGENTS.md"]
 WORKFLOW = "autoscout/weekly_workflow.py"
 KINDS = {"code", "model", "agent"}
 # The file names on the page open here. The repository is private: a visitor without access gets GitHub's 404.

@@ -186,7 +186,7 @@
   <div class="arr">→</div>
   <div class="box k-code"><b><span class="dot"></span>Command line</b><span><code>autoscout/__main__.py</code>, <code>autoscout/cli/</code></span></div>
 </div>
-<div class="aside">The nightly run skips the first two boxes: a timer on the run server calls <code>scripts/run-weekly --scheduled</code> directly.</div>
+<div class="aside">The nightly run skips the first two boxes: a timer on the run server calls <code>scripts/run-weekly --scheduled</code> directly, and a second timer tries once more the same night when the first run did not complete.</div>
 
 <h2 id="run">The run, stage by stage</h2>
 <p class="sub" id="run-sub"></p>
@@ -206,7 +206,7 @@
     <aside id="trackinfo"></aside>
   </div>
 </div>
-<div class="note">Every model call has the same shape: code prepares a bounded input, the model answers, code validates the answer and drops it if a check fails. The model never writes state. <code>autoscout/model_client.py</code> is the single door to the pinned model. Two calls go elsewhere: Jev, and a fallback provider for the PM loglines.</div>
+<div class="note">Every model call has the same shape: code prepares a bounded input, the model answers, code validates the answer and drops it if a check fails. The model never writes state. <code>autoscout/model_client.py</code> is the one place that builds a model call, and the model pin chooses the provider per stage. Two calls go elsewhere: Jev, and a fallback provider for the PM loglines.</div>
 
 <h2 id="jev">Jev scoring, step by step</h2>
 <p class="sub">How a book gets its fit score and how the score orders the review. One model step sits between code on both sides. Jev writes no prose: it returns probabilities for fixed answers.</p>
